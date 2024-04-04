@@ -3,10 +3,10 @@
 import asyncio
 import logging
 from datetime import timedelta
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 import attr
-from aiohttp import hdrs, ClientSession, ClientConnectionError
+from aiohttp import ClientConnectionError, ClientSession, hdrs
 from multidict import MultiDict
 from yarl import URL
 
@@ -18,8 +18,8 @@ DEFAULT_RECONNECTION_TIME = timedelta(seconds=5)
 DEFAULT_MAX_CONNECT_RETRY = 5
 DEFAULT_MAX_READ_RETRY = 10
 
-CONTENT_TYPE_EVENT_STREAM = 'text/event-stream'
-LAST_EVENT_ID_HEADER = 'Last-Event-Id'
+CONTENT_TYPE_EVENT_STREAM = "text/event-stream"
+LAST_EVENT_ID_HEADER = "Last-Event-Id"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ class MessageEvent:
     .. seealso:: https://www.w3.org/TR/eventsource/#dispatchMessage section 4
     .. seealso:: https://developer.mozilla.org/en-US/docs/Web/API/MessageEvent
     """
+
     type = attr.ib(type=str)
     message = attr.ib(type=str)
     data = attr.ib(type=str)
@@ -56,15 +57,19 @@ class EventSource:
 
     .. seealso:: https://www.w3.org/TR/eventsource/#eventsource
     """
-    def __init__(self, url: str,
-                 option: Optional[Dict[str, Any]] = None,
-                 reconnection_time: timedelta = DEFAULT_RECONNECTION_TIME,
-                 max_connect_retry: int = DEFAULT_MAX_CONNECT_RETRY,
-                 session: Optional[ClientSession] = None,
-                 on_open=None,
-                 on_message=None,
-                 on_error=None,
-                 **kwargs):
+
+    def __init__(
+        self,
+        url: str,
+        option: Optional[Dict[str, Any]] = None,
+        reconnection_time: timedelta = DEFAULT_RECONNECTION_TIME,
+        max_connect_retry: int = DEFAULT_MAX_CONNECT_RETRY,
+        session: Optional[ClientSession] = None,
+        on_open=None,
+        on_message=None,
+        on_error=None,
+        **kwargs
+    ):
         """Construct EventSource instance.
 
         :param url: specifies the URL to which to connect
@@ -99,19 +104,19 @@ class EventSource:
         self._reconnection_time = reconnection_time
         self._orginal_reconnection_time = reconnection_time
         self._max_connect_retry = max_connect_retry
-        self._last_event_id = ''
+        self._last_event_id = ""
         self._kwargs = kwargs
-        if 'headers' not in self._kwargs:
-            self._kwargs['headers'] = MultiDict()
+        if "headers" not in self._kwargs:
+            self._kwargs["headers"] = MultiDict()
 
-        self._event_id = ''
-        self._event_type = ''
-        self._event_data = ''
+        self._event_id = ""
+        self._event_type = ""
+        self._event_data = ""
 
         self._origin = None
         self._response = None
 
-        self._method = 'GET' if option is None else option.get('method', 'GET')
+        self._method = "GET" if option is None else option.get("method", "GET")
 
     def __enter__(self):
         """Use async with instead."""
@@ -121,7 +126,7 @@ class EventSource:
         """Should exist in pair with __enter__ but never executed."""
         pass  # pragma: no cover
 
-    async def __aenter__(self) -> 'EventSource':
+    async def __aenter__(self) -> "EventSource":
         """Connect and listen Server-Sent Event."""
         await self.connect(self._max_connect_retry)
         return self
@@ -155,43 +160,43 @@ class EventSource:
         # async for ... in StreamReader only split line by \n
         while self._response.status != 204:
             async for line_in_bytes in self._response.content:
-                line = line_in_bytes.decode('utf8')  # type: str
-                line = line.rstrip('\n').rstrip('\r')
+                line = line_in_bytes.decode("utf8")  # type: str
+                line = line.rstrip("\n").rstrip("\r")
 
-                if line == '':
+                if line == "":
                     # empty line
                     event = self._dispatch_event()
                     if event is not None:
                         return event
                     continue
 
-                if line[0] == ':':
+                if line[0] == ":":
                     # comment line, ignore
                     continue
 
-                if ':' in line:
+                if ":" in line:
                     # contains ':'
-                    fields = line.split(':', 1)
+                    fields = line.split(":", 1)
                     field_name = fields[0]
-                    field_value = fields[1].lstrip(' ')
+                    field_value = fields[1].lstrip(" ")
                     self._process_field(field_name, field_value)
                 else:
-                    self._process_field(line, '')
+                    self._process_field(line, "")
             self._ready_state = READY_STATE_CONNECTING
             if self._on_error:
                 self._on_error()
             self._reconnection_time *= 2
-            _LOGGER.debug('wait %s seconds for retry',
-                          self._reconnection_time.total_seconds())
-            await asyncio.sleep(
-                self._reconnection_time.total_seconds())
+            _LOGGER.debug(
+                "wait %s seconds for retry", self._reconnection_time.total_seconds()
+            )
+            await asyncio.sleep(self._reconnection_time.total_seconds())
             await self.connect()
         raise StopAsyncIteration
 
     async def connect(self, retry=0):
         """Connect to resource."""
-        _LOGGER.debug('connect')
-        headers = self._kwargs['headers']
+        _LOGGER.debug("connect")
+        headers = self._kwargs["headers"]
 
         # For HTTP connections, the Accept header may be included;
         # if included, it must contain only formats of event framing that are
@@ -203,18 +208,16 @@ class EventSource:
         # then a Last-Event-Id HTTP header must be included with the request,
         # whose value is the value of the event source's last event ID string,
         # encoded as UTF-8.
-        if self._last_event_id != '':
+        if self._last_event_id != "":
             headers[LAST_EVENT_ID_HEADER] = self._last_event_id
 
         # User agents should use the Cache-Control: no-cache header in
         # requests to bypass any caches for requests of event sources.
-        headers[hdrs.CACHE_CONTROL] = 'no-cache'
+        headers[hdrs.CACHE_CONTROL] = "no-cache"
 
         try:
             response = await self._session.request(
-                self._method,
-                self._url,
-                **self._kwargs
+                self._method, self._url, **self._kwargs
             )
         except ClientConnectionError:
             if retry <= 0 or self._ready_state == READY_STATE_CLOSED:
@@ -225,17 +228,19 @@ class EventSource:
                 if self._on_error:
                     self._on_error()
                 self._reconnection_time *= 2
-                _LOGGER.debug('wait %s seconds for retry',
-                              self._reconnection_time.total_seconds())
-                await asyncio.sleep(
-                    self._reconnection_time.total_seconds())
+                _LOGGER.debug(
+                    "wait %s seconds for retry", self._reconnection_time.total_seconds()
+                )
+                await asyncio.sleep(self._reconnection_time.total_seconds())
                 await self.connect(retry - 1)
             return
 
         if response.status >= 400 or response.status == 305:
-            error_message = 'fetch {} failed: {}'.format(
-                self._url, response.status)
-            _LOGGER.error(error_message)
+            error_message = (
+                "error on url: {}\nstatus_code: {}\nheader: {}\nbody: {}".format(
+                    self._url, response.status, response.headers, await response.text()
+                )
+            )
 
             await self._fail_connect()
 
@@ -244,16 +249,17 @@ class EventSource:
             raise ConnectionError(error_message)
 
         if response.status != 200:
-            error_message = 'fetch {} failed with wrong response status: {}'. \
-                format(self._url, response.status)
+            error_message = "fetch {} failed with wrong response status: {}".format(
+                self._url, response.status
+            )
             _LOGGER.error(error_message)
             await self._fail_connect()
             raise ConnectionAbortedError(error_message)
 
         if response.content_type != CONTENT_TYPE_EVENT_STREAM:
-            error_message = \
-              'fetch {} failed with wrong Content-Type: {}'.format(
-                  self._url, response.headers.get(hdrs.CONTENT_TYPE))
+            error_message = "fetch {} failed with wrong Content-Type: {}".format(
+                self._url, response.headers.get(hdrs.CONTENT_TYPE)
+            )
             _LOGGER.error(error_message)
 
             await self._fail_connect()
@@ -267,7 +273,7 @@ class EventSource:
 
     async def close(self):
         """Close connection."""
-        _LOGGER.debug('close')
+        _LOGGER.debug("close")
         self._ready_state = READY_STATE_CLOSED
         if self._response is not None:
             self._response.close()
@@ -293,46 +299,47 @@ class EventSource:
         """Dispatch event."""
         self._last_event_id = self._event_id
 
-        if self._event_data == '':
-            self._event_type = ''
+        if self._event_data == "":
+            self._event_type = ""
             return
 
-        self._event_data = self._event_data.rstrip('\n')
+        self._event_data = self._event_data.rstrip("\n")
 
         message = MessageEvent(
-            type=self._event_type if self._event_type != '' else None,
+            type=self._event_type if self._event_type != "" else None,
             message=self._event_type,
             data=self._event_data,
             origin=self._origin,
-            last_event_id=self._last_event_id
+            last_event_id=self._last_event_id,
         )
         _LOGGER.debug(message)
         if self._on_message:
             self._on_message(message)
 
-        self._event_type = ''
-        self._event_data = ''
+        self._event_type = ""
+        self._event_data = ""
         return message
 
     def _process_field(self, field_name, field_value):
         """Process field."""
-        if field_name == 'event':
+        if field_name == "event":
             self._event_type = field_value
 
-        elif field_name == 'data':
+        elif field_name == "data":
             self._event_data += field_value
-            self._event_data += '\n'
+            self._event_data += "\n"
 
-        elif field_name == 'id' and field_value not in ('\u0000', '\x00\x00'):
+        elif field_name == "id" and field_value not in ("\u0000", "\x00\x00"):
             self._event_id = field_value
 
-        elif field_name == 'retry':
+        elif field_name == "retry":
             try:
                 retry_in_ms = int(field_value)
                 self._reconnection_time = timedelta(milliseconds=retry_in_ms)
             except ValueError:
-                _LOGGER.warning('Received invalid retry value %s, ignore it',
-                                field_value)
+                _LOGGER.warning(
+                    "Received invalid retry value %s, ignore it", field_value
+                )
                 pass
 
         pass
